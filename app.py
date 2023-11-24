@@ -14,12 +14,12 @@ from utils.session_expiration import session_expiration
 
 app = Flask(__name__)
 
-cors = CORS(app)
+cors = CORS(app, supports_credentials=True)
 app.config['CORS_HEADERS'] = 'Content-Type'
 app.secret_key = "v7854w78883n398292" 
 API_KEY = "dc936e5542b904e7e49641cb95179a2f"
 now = datetime.now()   
-app.permanent_session_lifetime = timedelta(minutes=1)
+app.permanent_session_lifetime = timedelta(minutes=10)
 
 #   App functions
 def fixed_temp(x):
@@ -227,3 +227,19 @@ def logout():
     session.pop('email', None)
     
     return show_json("Pomyslnie wylogowano", 200, True)
+
+@app.route("/dashboard")
+def dashboard():
+    if "email" in session:
+        travels = db.travels.aggregate([{"$project":{"_id":0}}])
+        weather = db.weather.aggregate([{"$project":{"_id":0}}])
+        user = db.users.find_one({"email":session["email"]})
+        user["_id"] = str(user["_id"])
+
+        return show_json("Przyznano dostęp",200,True, {
+            "travels": list(travels),
+            "weather":list(weather),
+            "user":user
+        })
+    else:
+        return show_json("Odmowa dostępu",401,False)
