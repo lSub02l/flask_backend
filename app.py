@@ -1,14 +1,16 @@
 import time
 import requests
 import re
-from utils.regex import psswd_regex, email_regex
+
 from bson import ObjectId
 from flask import Flask, json, jsonify, request, session
 from database import db, col_weather
-from utils.show_json import show_json
 from flask_cors import CORS
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
+from utils.regex import psswd_regex, email_regex
+from utils.show_json import show_json
+from utils.session_expiration import session_expiration
 
 app = Flask(__name__)
 
@@ -16,7 +18,8 @@ cors = CORS(app)
 app.config['CORS_HEADERS'] = 'Content-Type'
 app.secret_key = "v7854w78883n398292" 
 API_KEY = "dc936e5542b904e7e49641cb95179a2f"
-now = datetime.now()    
+now = datetime.now()   
+app.permanent_session_lifetime = timedelta(minutes=1)
 
 #   App functions
 def fixed_temp(x):
@@ -203,7 +206,9 @@ def login():
     if psswd_check == False:
         return show_json("Bledne haslo", 404, False)
     
+    expiration = session_expiration(app)
     session['email'] = email
+    session['date'] = (datetime.now() + expiration).strftime("%H:%M:%S")
     return show_json("Poprawnie zalogowano na konto", 200, True, email)
 
 @app.route("/whoami")
