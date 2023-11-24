@@ -1,45 +1,73 @@
 import time
 import requests
 import re
-from utils.regex import psswd_regex, email_regex
+
 from bson import ObjectId
-from flask import Flask, json, jsonify, request
+from flask import Flask, json, jsonify, request, session
 from database import db, col_weather
-from utils.show_json import show_json
 from flask_cors import CORS
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
+from utils.regex import psswd_regex, email_regex
+from utils.show_json import show_json
+from utils.session_expiration import session_expiration
 
 app = Flask(__name__)
 
-cors = CORS(app)
+cors = CORS(app, supports_credentials=True)
 app.config['CORS_HEADERS'] = 'Content-Type'
+app.secret_key = "v7854w78883n398292" 
 API_KEY = "dc936e5542b904e7e49641cb95179a2f"
-now = datetime.now()    
+now = datetime.now()   
+app.permanent_session_lifetime = timedelta(minutes=10)
 
-# Travel functions
+#   App functions
+def fixed_temp(x):
+    x = round(x - 273.15, 2)
+    return x
+
+def get_weather():
+    response = requests.get(f'https://api.openweathermap.org/data/2.5/weather?q=Warsaw&appid={API_KEY}')
+    data = response.json()
+    db.weather.insert_one({
+        "temp": fixed_temp(data['main']['temp']),
+        "min_temp": fixed_temp(data['main']['temp_min']),
+        "max_temp": fixed_temp(data['main']['temp_max']),
+        "feels_like": fixed_temp(data['main']['feels_like']),
+        "humidity": data['main']['humidity'],
+        "pressure": data['main']['pressure'],
+        "description": data['weather'][0]['description'],
+        "time":time.strftime("%H:%M"),
+        "date":time.strftime("%-%m-%Y"),
+        "city": data['name']
+    }) 
+
+#   Routes 
 @app.route("/create-travel", methods=["GET","POST"])
 def create_travel():
-    title = request.json["title"]
-    price = request.json["price"]
-    country = request.json["country"]
-    desc = request.json["desc"]
-    image = request.json["image"]
+    if'email' in session:
+        title = request.json["title"]
+        price = request.json["price"]
+        country = request.json["country"]
+        desc = request.json["desc"]
+        image = request.json["image"]
 
-    travel_exists = db.travels.find_one({"title":title})
-    if travel_exists:
-        return show_json("Wycieczka o podanej nazwie juz istnieje", 405, False)
+        travel_exists = db.travels.find_one({"title":title})
+        if travel_exists:
+            return show_json("Wycieczka o podanej nazwie juz istnieje", 405, False)
 
-    db.travels.insert_one({
-        "title":title,
-        "price":price,
-        "country":country,
-        "desc":desc,
-        "image":image
-    })
+        db.travels.insert_one({
+            "title":title,
+            "price":price,
+            "country":country,
+            "desc":desc,
+            "image":image
+        })
 
-    return show_json("Udalo sie dodac nowa wycieczke", 200, True)
-
+        return show_json("Udalo sie dodac nowa wycieczke", 200, True)
+    else:
+        return show_json("Odmowa dostepu", 401, False)
+    
 @app.route("/all-travels")
 def all_travels():
     data = db.travels.find({})
@@ -128,26 +156,6 @@ def delete_travel(id):
 #             print(str(e))
 #             return show_json("Nie udało się pobrac danych pogodowych", 500, False)
 
-def fixed_temp(x):
-    x = round(x - 273.15, 2)
-    return x
-
-def get_weather():
-    response = requests.get(f'https://api.openweathermap.org/data/2.5/weather?q=Warsaw&appid={API_KEY}')
-    data = response.json()
-    db.weather.insert_one({
-        "temp": fixed_temp(data['main']['temp']),
-        "min_temp": fixed_temp(data['main']['temp_min']),
-        "max_temp": fixed_temp(data['main']['temp_max']),
-        "feels_like": fixed_temp(data['main']['feels_like']),
-        "humidity": data['main']['humidity'],
-        "pressure": data['main']['pressure'],
-        "description": data['weather'][0]['description'],
-        "time":time.strftime("%H:%M"),
-        "date":time.strftime("%-%m-%Y"),
-        "city": data['name']
-    }) 
-
 @app.route("/show-weather")
 def show_weather():
      data = db.weather.find({})
@@ -201,4 +209,37 @@ def login():
     if psswd_check == False:
         return show_json("Bledne haslo", 404, False)
     
+    expiration = session_expiration(app)
+    session['email'] = email
+    session['date'] = (datetime.now() + expiration).strftime("%H:%M:%S")
     return show_json("Poprawnie zalogowano na konto", 200, True, email)
+
+@app.route("/whoami")
+def who_am_i():
+    if "email" in session:
+        user = session['email']
+        return show_json("Informacje o uzytkowniku", 200, True, user)
+    else:
+        return show_json("Odmowa dostepu", 401, False)
+    
+@app.route("/logout")
+def logout():
+    session.pop('email', None)
+    
+    return show_json("Pomyslnie wylogowano", 200, True)
+
+@app.route("/dashboard")
+def dashboard():
+    if "email" in session:
+        travels = db.travels.aggregate([{"$project":{"_id":0}}])
+        weather = db.weather.aggregate([{"$project":{"_id":0}}])
+        user = db.users.find_one({"email":session["email"]})
+        user["_id"] = str(user["_id"])
+
+        return show_json("Przyznano dostęp",200,True, {
+            "travels": list(travels),
+            "weather":list(weather),
+            "user":user
+        })
+    else:
+        return show_json("Odmowa dostępu",401,False)
