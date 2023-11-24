@@ -17,6 +17,7 @@ app.config['CORS_HEADERS'] = 'Content-Type'
 API_KEY = "dc936e5542b904e7e49641cb95179a2f"
 now = datetime.now()    
 
+# Travel functions
 @app.route("/create-travel", methods=["GET","POST"])
 def create_travel():
     title = request.json["title"]
@@ -83,6 +84,8 @@ def delete_travel(id):
         print(str(e))
         return show_json("Nie udało się usunąć wycieczki", 500, False)
 
+#   Weather functions
+
 # def get_weather(city):
 #     response = requests.get(f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={API_KEY}")
 #     print(response)
@@ -125,7 +128,7 @@ def delete_travel(id):
 #             print(str(e))
 #             return show_json("Nie udało się pobrac danych pogodowych", 500, False)
 
-def napraw_temp(x):
+def fixed_temp(x):
     x = round(x - 273.15, 2)
     return x
 
@@ -133,10 +136,10 @@ def get_weather():
     response = requests.get(f'https://api.openweathermap.org/data/2.5/weather?q=Warsaw&appid={API_KEY}')
     data = response.json()
     db.weather.insert_one({
-        "temp": napraw_temp(data['main']['temp']),
-        "min_temp": napraw_temp(data['main']['temp_min']),
-        "max_temp": napraw_temp(data['main']['temp_max']),
-        "feels_like": napraw_temp(data['main']['feels_like']),
+        "temp": fixed_temp(data['main']['temp']),
+        "min_temp": fixed_temp(data['main']['temp_min']),
+        "max_temp": fixed_temp(data['main']['temp_max']),
+        "feels_like": fixed_temp(data['main']['feels_like']),
         "humidity": data['main']['humidity'],
         "pressure": data['main']['pressure'],
         "description": data['weather'][0]['description'],
@@ -155,6 +158,7 @@ def show_weather():
 
      return show_json("Udało się pobrać dane",200,True,weather) 
 
+#   Register
 @app.route("/register", methods=["POST"])
 def register():
     username = request.json['username']
@@ -162,8 +166,14 @@ def register():
     psswd = request.json['psswd']
     hashed_psswd = generate_password_hash(psswd)
 
-    if re.match(psswd_regex) is None:
-        return show_json("Haslo musi zawierac mala, duza litere,cyfre, minimum 5 znakow i znak specjanlny", 400, False)
+    if db.users.find_one({"username":username}):
+        return show_json("Uzytkownik o podanej nazwie juz istnieje", 400, False)
+    if db.users.find_one({"email":email}):
+        return show_json("Email jest juz w uzyciu", 400, False)
+    if re.match(email_regex, email) is None:
+        return show_json("Podaj poprawny adres email", 400, False)
+    if re.match(psswd_regex, psswd) is None:
+        return show_json("Haslo musi zawierac mala, duza litere,cyfre, minimum 8 znakow i znak specjanlny", 400, False)
 
     new_user = {
         "username":username,
@@ -174,3 +184,21 @@ def register():
     db.users.insert_one(new_user)
     new_user['_id'] = str(new_user['_id'] )
     return show_json("Utworzono konto", 201, True, new_user)
+
+#   Login
+@app.route("/login", methods = ["POST"])
+def login(): 
+    psswd = request.json['psswd']
+    email = request.json['email']
+
+    user_exists = db.users.find_one({'email':email})
+
+    if user_exists is None:
+        return show_json("Bledny adres email", 404, False)
+
+    psswd_check = check_password_hash(user_exists['psswd'], psswd)
+
+    if psswd_check == False:
+        return show_json("Bledne haslo", 404, False)
+    
+    return show_json("Poprawnie zalogowano na konto", 200, True, email)
