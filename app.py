@@ -45,26 +45,29 @@ def get_weather():
 #   Routes 
 @app.route("/create-travel", methods=["GET","POST"])
 def create_travel():
-    title = request.json["title"]
-    price = request.json["price"]
-    country = request.json["country"]
-    desc = request.json["desc"]
-    image = request.json["image"]
+    if'email' in session:
+        title = request.json["title"]
+        price = request.json["price"]
+        country = request.json["country"]
+        desc = request.json["desc"]
+        image = request.json["image"]
 
-    travel_exists = db.travels.find_one({"title":title})
-    if travel_exists:
-        return show_json("Wycieczka o podanej nazwie juz istnieje", 405, False)
+        travel_exists = db.travels.find_one({"title":title})
+        if travel_exists:
+            return show_json("Wycieczka o podanej nazwie juz istnieje", 405, False)
 
-    db.travels.insert_one({
-        "title":title,
-        "price":price,
-        "country":country,
-        "desc":desc,
-        "image":image
-    })
+        db.travels.insert_one({
+            "title":title,
+            "price":price,
+            "country":country,
+            "desc":desc,
+            "image":image
+        })
 
-    return show_json("Udalo sie dodac nowa wycieczke", 200, True)
-
+        return show_json("Udalo sie dodac nowa wycieczke", 200, True)
+    else:
+        return show_json("Odmowa dostepu", 401, False)
+    
 @app.route("/all-travels")
 def all_travels():
     data = db.travels.find({})
