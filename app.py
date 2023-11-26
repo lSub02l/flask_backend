@@ -17,7 +17,7 @@ app = Flask(__name__)
 cors = CORS(app, supports_credentials=True)
 app.config['CORS_HEADERS'] = 'Content-Type'
 app.secret_key = "v7854w78883n398292" 
-API_KEY = "dc936e5542b904e7e49641cb95179a2f"
+API_KEY = ""
 now = datetime.now()   
 app.permanent_session_lifetime = timedelta(minutes=10)
 
